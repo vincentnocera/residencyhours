@@ -107,16 +107,24 @@ const hoursToTime = (hours: number): string => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
 }
 
+// Helper function to normalize and fill blocks
+const normalizeAndFillBlocks = (
+  blocksInput: Record<string, TimeBlock[]> | undefined,
+  weekStartDate: Date
+): Record<string, TimeBlock[]> => {
+  const normalizedBlocks: Record<string, TimeBlock[]> = {}
+  for (let i = 0; i < 7; i++) {
+    const dateKey = format(addDays(weekStartDate, i), 'yyyy-MM-dd')
+    normalizedBlocks[dateKey] = (blocksInput && blocksInput[dateKey]) ? blocksInput[dateKey] : []
+  }
+  return normalizedBlocks
+}
+
 export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onUpdate }: WeekCalendarProps) {
   // Initialize state - this only runs once on mount
-  const [dayBlocks, setDayBlocks] = useState<Record<string, TimeBlock[]>>(() => {
-    const newDayBlocks: Record<string, TimeBlock[]> = {};
-    for (let i = 0; i < 7; i++) {
-      const dateKey = format(addDays(weekStart, i), 'yyyy-MM-dd');
-      newDayBlocks[dateKey] = (initialBlocks && initialBlocks[dateKey]) ? initialBlocks[dateKey] : [];
-    }
-    return newDayBlocks;
-  });
+  const [dayBlocks, setDayBlocks] = useState<Record<string, TimeBlock[]>>(() =>
+    normalizeAndFillBlocks(initialBlocks, weekStart)
+  );
   
   const [activities, setActivities] = useState<Activity[]>([])
   const [loadingActivities, setLoadingActivities] = useState(true)
@@ -155,7 +163,7 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
   // Call onUpdate whenever blocks change
   React.useEffect(() => {
     onUpdate?.(dayBlocks)
-  }, [dayBlocks])
+  }, [dayBlocks, onUpdate])
 
   const [dragStart, setDragStart] = useState<{ dateKey: string; hour: number } | null>(null)
   const [dragEnd, setDragEnd] = useState<number | null>(null)
@@ -258,11 +266,7 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
     if (previousWeekRef.current.getTime() !== weekStart.getTime()) {
       previousWeekRef.current = weekStart;
       
-      const newDayBlocks: Record<string, TimeBlock[]> = {};
-      for (let i = 0; i < 7; i++) {
-        const dateKey = format(addDays(weekStart, i), 'yyyy-MM-dd');
-        newDayBlocks[dateKey] = (initialBlocks && initialBlocks[dateKey]) ? initialBlocks[dateKey] : [];
-      }
+      const newDayBlocks = normalizeAndFillBlocks(initialBlocks, weekStart);
       setDayBlocks(newDayBlocks);
     }
   }, [weekStart, initialBlocks]); // Depend on weekStart and initialBlocks for proper re-initialization
@@ -270,25 +274,23 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
   // Sync with initialBlocks when they change (e.g., after "Copy Last Week")
   React.useEffect(() => {
     console.log('[WeekCalendar] Sync effect triggered. initialBlocks:', initialBlocks);
-    if (!initialBlocks) {
-      console.log('[WeekCalendar] No initialBlocks, returning.');
-      return;
-    }
+
+    const normalizedTargetBlocks = normalizeAndFillBlocks(initialBlocks, weekStart);
     
     // Deep compare to see if blocks actually changed
     const currentBlocksStr = JSON.stringify(dayBlocks);
-    const newBlocksStr = JSON.stringify(initialBlocks);
+    const newBlocksStr = JSON.stringify(normalizedTargetBlocks);
     
     console.log('[WeekCalendar] currentBlocksStr:', currentBlocksStr.substring(0, 100)); // Log part of string
-    console.log('[WeekCalendar] newBlocksStr:', newBlocksStr.substring(0, 100)); // Log part of string
+    console.log('[WeekCalendar] newBlocksStr (normalized):', newBlocksStr.substring(0, 100)); // Log part of string
 
     if (currentBlocksStr !== newBlocksStr) {
-      console.log('[WeekCalendar] Detected change, calling setDayBlocks with initialBlocks.');
-      setDayBlocks(initialBlocks);
+      console.log('[WeekCalendar] Detected change, calling setDayBlocks with normalizedTargetBlocks.');
+      setDayBlocks(normalizedTargetBlocks);
     } else {
       console.log('[WeekCalendar] No change detected between currentBlocksStr and newBlocksStr.');
     }
-  }, [initialBlocks]); // Don't include dayBlocks in deps to avoid infinite loop
+  }, [initialBlocks, weekStart]); // Add weekStart to dependencies
 
   const getDayTotal = (dateKey: string) => {
     return (dayBlocks[dateKey] || []).reduce((sum, block) => sum + block.duration, 0)
