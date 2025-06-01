@@ -260,37 +260,24 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
     return activities.find(a => a.id === activityId)
   }
 
-  // Update dayBlocks only when week changes
+  // Consolidated sync effect for weekStart and initialBlocks
   React.useEffect(() => {
-    // Only re-initialize if we're actually changing weeks
+    console.log(
+      '[WeekCalendar] Consolidated sync effect. WeekStart:',
+      format(weekStart, 'yyyy-MM-dd'),
+      'InitialBlocks keys:',
+      initialBlocks ? Object.keys(initialBlocks) : 'null'
+    );
+
+    const normalizedBlocks = normalizeAndFillBlocks(initialBlocks, weekStart);
+    setDayBlocks(normalizedBlocks);
+
+    // Update previousWeekRef if weekStart has actually changed
     if (previousWeekRef.current.getTime() !== weekStart.getTime()) {
+      console.log('[WeekCalendar] Week has changed, updating previousWeekRef.');
       previousWeekRef.current = weekStart;
-      
-      const newDayBlocks = normalizeAndFillBlocks(initialBlocks, weekStart);
-      setDayBlocks(newDayBlocks);
     }
-  }, [weekStart, initialBlocks]); // Depend on weekStart and initialBlocks for proper re-initialization
-
-  // Sync with initialBlocks when they change (e.g., after "Copy Last Week")
-  React.useEffect(() => {
-    console.log('[WeekCalendar] Sync effect triggered. initialBlocks:', initialBlocks);
-
-    const normalizedTargetBlocks = normalizeAndFillBlocks(initialBlocks, weekStart);
-    
-    // Deep compare to see if blocks actually changed
-    const currentBlocksStr = JSON.stringify(dayBlocks);
-    const newBlocksStr = JSON.stringify(normalizedTargetBlocks);
-    
-    console.log('[WeekCalendar] currentBlocksStr:', currentBlocksStr.substring(0, 100)); // Log part of string
-    console.log('[WeekCalendar] newBlocksStr (normalized):', newBlocksStr.substring(0, 100)); // Log part of string
-
-    if (currentBlocksStr !== newBlocksStr) {
-      console.log('[WeekCalendar] Detected change, calling setDayBlocks with normalizedTargetBlocks.');
-      setDayBlocks(normalizedTargetBlocks);
-    } else {
-      console.log('[WeekCalendar] No change detected between currentBlocksStr and newBlocksStr.');
-    }
-  }, [initialBlocks, weekStart]); // Add weekStart to dependencies
+  }, [initialBlocks, weekStart]);
 
   const getDayTotal = (dateKey: string) => {
     return (dayBlocks[dateKey] || []).reduce((sum, block) => sum + block.duration, 0)
@@ -509,12 +496,6 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
                   } else {
                     timeLabel = `${hour - 12} PM`;
                   }
-                  
-                  // Debug log
-                  if (hour >= 12 && hour <= 23) {
-                    console.log(`Hour ${hour} -> ${timeLabel}`);
-                  }
-                  
                   return (
                     <div
                       key={hour}
