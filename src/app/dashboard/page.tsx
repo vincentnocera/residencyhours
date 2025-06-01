@@ -175,7 +175,7 @@ export default function DashboardPage() {
 
       // Step 2: Check its status (Option A: Strict - only 'submitted' or 'approved')
       if (!prevWeekSchedule) {
-        setCopyError('No schedule found for last week.')
+        setCopyError('No submitted or approved schedule found from last week to copy. Please ensure last week was submitted or approved.')
         setIsCopying(false)
         return
       }
