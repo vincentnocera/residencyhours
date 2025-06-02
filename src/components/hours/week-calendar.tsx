@@ -160,11 +160,6 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
     }
   }, []) // Only run on mount
   
-  // Call onUpdate whenever blocks change
-  React.useEffect(() => {
-    onUpdate?.(dayBlocks)
-  }, [dayBlocks, onUpdate])
-
   const [dragStart, setDragStart] = useState<{ dateKey: string; hour: number } | null>(null)
   const [dragEnd, setDragEnd] = useState<number | null>(null)
   const [movingBlock, setMovingBlock] = useState<{ blockId: string; dateKey: string; originalStart: number } | null>(null)
@@ -211,29 +206,44 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
       duration: duration
     }
     
-    setDayBlocks(prev => ({
-      ...prev,
-      [dateKey]: [...(prev[dateKey] || []), newBlock]
-    }))
+    setDayBlocks(prev => {
+      const updated = {
+        ...prev,
+        [dateKey]: [...(prev[dateKey] || []), newBlock]
+      };
+      // Call onUpdate with the new state
+      onUpdate?.(updated);
+      return updated;
+    })
     
     setSelectedBlock(newBlock.id) // Auto-select the new block
     return true
   }
 
   const removeBlock = (dateKey: string, blockId: string) => {
-    setDayBlocks(prev => ({
-      ...prev,
-      [dateKey]: (prev[dateKey] || []).filter(b => b.id !== blockId)
-    }))
+    setDayBlocks(prev => {
+      const updated = {
+        ...prev,
+        [dateKey]: (prev[dateKey] || []).filter(b => b.id !== blockId)
+      };
+      // Call onUpdate with the new state
+      onUpdate?.(updated);
+      return updated;
+    })
   }
 
   const updateBlock = (dateKey: string, blockId: string, updates: Partial<TimeBlock>) => {
-    setDayBlocks(prev => ({
-      ...prev,
-      [dateKey]: (prev[dateKey] || []).map(b => 
-        b.id === blockId ? { ...b, ...updates } : b
-      )
-    }))
+    setDayBlocks(prev => {
+      const updated = {
+        ...prev,
+        [dateKey]: (prev[dateKey] || []).map(b => 
+          b.id === blockId ? { ...b, ...updates } : b
+        )
+      };
+      // Call onUpdate with the new state
+      onUpdate?.(updated);
+      return updated;
+    })
   }
 
   const resizeBlock = (dateKey: string, blockId: string, newDuration: number) => {
@@ -329,6 +339,8 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
                   const newDayBlocks = { ...prev };
                   newDayBlocks[currentDateKey] = (prev[currentDateKey] || []).filter(b => b.id !== movingBlock.blockId);
                   newDayBlocks[newDateKey] = [...(prev[newDateKey] || []).filter(b => b.id !== movingBlock.blockId), blockToMove];
+                  // Call onUpdate with the new state
+                  onUpdate?.(newDayBlocks);
                   return newDayBlocks;
                 })
                 setMovingBlock({ ...movingBlock, dateKey: newDateKey })
