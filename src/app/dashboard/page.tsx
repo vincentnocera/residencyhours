@@ -281,7 +281,7 @@ export default function DashboardPage() {
     }
   }, [scheduleStatus])
 
-  const onWeekCalendarUpdate = useCallback((blocks: Record<string, WeekCalendarTimeBlock[]>) => {
+  const onBlocksChange = useCallback((blocks: Record<string, WeekCalendarTimeBlock[]>) => {
     setWeekBlocks(blocks)
     const unassigned = Object.values(blocks).some((dayBlocks) => 
       dayBlocks.some((block) => !block.activityId)
@@ -437,8 +437,8 @@ export default function DashboardPage() {
           <WeekCalendar
             weekStart={currentWeek}
             isReadOnly={!isEditable || isSaving} // Also make read-only if saving
-            initialBlocks={weekBlocks}
-            onUpdate={onWeekCalendarUpdate}
+            blocks={weekBlocks}
+            onBlocksChange={onBlocksChange}
           />
 
           {copySuccess && (
