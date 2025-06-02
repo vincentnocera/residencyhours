@@ -22,8 +22,8 @@ export interface TimeBlock {
 interface WeekCalendarProps {
   weekStart: Date
   isReadOnly?: boolean
-  initialBlocks?: Record<string, TimeBlock[]>
-  onUpdate?: (blocks: Record<string, TimeBlock[]>) => void
+  blocks: Record<string, TimeBlock[]> // Changed from initialBlocks
+  onBlocksChange: (blocks: Record<string, TimeBlock[]>) => void // Changed from onUpdate
 }
 
 const HOURS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
@@ -120,21 +120,23 @@ const normalizeAndFillBlocks = (
   return normalizedBlocks
 }
 
-export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onUpdate }: WeekCalendarProps) {
-  // Initialize state - this only runs once on mount
-  const [dayBlocks, setDayBlocks] = useState<Record<string, TimeBlock[]>>(() =>
-    normalizeAndFillBlocks(initialBlocks, weekStart)
-  );
-  
+export function WeekCalendar({ weekStart, isReadOnly = false, blocks, onBlocksChange }: WeekCalendarProps) {
+  const renderCountRef = React.useRef(0);
   const [activities, setActivities] = useState<Activity[]>([])
   const [loadingActivities, setLoadingActivities] = useState(true)
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null)
   
-  // Track the previous week to know when we're changing weeks
-  const previousWeekRef = React.useRef(weekStart)
-  
   // Ref for the scrollable container
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    renderCountRef.current += 1;
+    if (renderCountRef.current > 50) {
+      console.error('WeekCalendar: Excessive re-renders detected. Possible infinite loop.');
+      // Optional: reset counter to avoid spamming console after first warning
+      // renderCountRef.current = 0; 
+    }
+  }); // No dependency array, so it runs on every render
   
   // Fetch activities on mount
   useEffect(() => {
@@ -168,12 +170,12 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
 
   const selectedBlockData = React.useMemo(() => {
     if (!selectedBlock) return null;
-    const dateKey = Object.keys(dayBlocks).find(key =>
-      (dayBlocks[key] || []).some(b => b.id === selectedBlock)
+    const dateKey = Object.keys(blocks).find(key =>
+      (blocks[key] || []).some(b => b.id === selectedBlock)
     );
     if (!dateKey) return null;
-    return (dayBlocks[dateKey] || []).find(b => b.id === selectedBlock) || null;
-  }, [selectedBlock, dayBlocks]);
+    return (blocks[dateKey] || []).find(b => b.id === selectedBlock) || null;
+  }, [selectedBlock, blocks]);
 
   const weekDays = Array.from({ length: 7 }, (_, i) => ({
     date: addDays(weekStart, i),
@@ -182,8 +184,8 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
   }))
 
   const hasOverlap = (dateKey: string, startHour: number, duration: number, excludeId?: string) => {
-    const blocks = dayBlocks[dateKey] || []
-    return blocks.some(block => {
+    const currentDayBlocks = blocks[dateKey] || []
+    return currentDayBlocks.some(block => {
       if (excludeId && block.id === excludeId) return false
       const blockStart = timeToHours(block.startTime)
       const blockEnd = blockStart + block.duration
@@ -193,9 +195,10 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
   }
 
   const addBlock = (dateKey: string, startHour: number, duration: number = 1) => {
+    // isUserInteractionRef.current = true; // Removed
     // Check for overlap
-    if (hasOverlap(dateKey, startHour, duration)) {
-      return false
+    if (hasOverlap(dateKey, startHour, duration)) { // hasOverlap now uses props.blocks
+      return false;
     }
     
     const newBlock: TimeBlock = {
@@ -204,50 +207,41 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
       startTime: hoursToTime(startHour),
       endTime: hoursToTime(startHour + duration),
       duration: duration
-    }
+    };
     
-    setDayBlocks(prev => {
-      const updated = {
-        ...prev,
-        [dateKey]: [...(prev[dateKey] || []), newBlock]
-      };
-      // Call onUpdate with the new state
-      onUpdate?.(updated);
-      return updated;
-    })
+    const updatedBlocks = {
+      ...blocks, // Use props.blocks
+      [dateKey]: [...(blocks[dateKey] || []), newBlock]
+    };
+    onBlocksChange(updatedBlocks); // Call parent's handler
     
-    setSelectedBlock(newBlock.id) // Auto-select the new block
-    return true
-  }
+    setSelectedBlock(newBlock.id); // Auto-select the new block
+    return true;
+  };
 
   const removeBlock = (dateKey: string, blockId: string) => {
-    setDayBlocks(prev => {
-      const updated = {
-        ...prev,
-        [dateKey]: (prev[dateKey] || []).filter(b => b.id !== blockId)
-      };
-      // Call onUpdate with the new state
-      onUpdate?.(updated);
-      return updated;
-    })
-  }
+    // isUserInteractionRef.current = true; // Removed
+    const updatedBlocks = {
+      ...blocks,
+      [dateKey]: (blocks[dateKey] || []).filter(b => b.id !== blockId)
+    };
+    onBlocksChange(updatedBlocks);
+    if (selectedBlock === blockId) setSelectedBlock(null); // Deselect if removed
+  };
 
   const updateBlock = (dateKey: string, blockId: string, updates: Partial<TimeBlock>) => {
-    setDayBlocks(prev => {
-      const updated = {
-        ...prev,
-        [dateKey]: (prev[dateKey] || []).map(b => 
-          b.id === blockId ? { ...b, ...updates } : b
-        )
-      };
-      // Call onUpdate with the new state
-      onUpdate?.(updated);
-      return updated;
-    })
-  }
+    // isUserInteractionRef.current = true; // Removed
+    const updatedBlocks = {
+      ...blocks,
+      [dateKey]: (blocks[dateKey] || []).map(b =>
+        b.id === blockId ? { ...b, ...updates } : b
+      )
+    };
+    onBlocksChange(updatedBlocks);
+  };
 
   const resizeBlock = (dateKey: string, blockId: string, newDuration: number) => {
-    const block = dayBlocks[dateKey]?.find(b => b.id === blockId)
+    const block = blocks[dateKey]?.find(b => b.id === blockId) // Use props.blocks
     if (!block) return
     
     const startHour = timeToHours(block.startTime)
@@ -270,32 +264,13 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
     return activities.find(a => a.id === activityId)
   }
 
-  // Consolidated sync effect for weekStart and initialBlocks
-  React.useEffect(() => {
-    console.log(
-      '[WeekCalendar] Consolidated sync effect. WeekStart:',
-      format(weekStart, 'yyyy-MM-dd'),
-      'InitialBlocks keys:',
-      initialBlocks ? Object.keys(initialBlocks) : 'null'
-    );
-
-    const normalizedBlocks = normalizeAndFillBlocks(initialBlocks, weekStart);
-    setDayBlocks(normalizedBlocks);
-
-    // Update previousWeekRef if weekStart has actually changed
-    if (previousWeekRef.current.getTime() !== weekStart.getTime()) {
-      console.log('[WeekCalendar] Week has changed, updating previousWeekRef.');
-      previousWeekRef.current = weekStart;
-    }
-  }, [initialBlocks, weekStart]);
-
   const getDayTotal = (dateKey: string) => {
-    return (dayBlocks[dateKey] || []).reduce((sum, block) => sum + block.duration, 0)
+    return (blocks[dateKey] || []).reduce((sum, block) => sum + block.duration, 0)
   }
 
   const getWeekTotal = () => {
-    return Object.values(dayBlocks).reduce((sum, blocks) => 
-      sum + blocks.reduce((daySum, block) => daySum + block.duration, 0), 0
+    return Object.values(blocks).reduce((sum, dayBlocksList) => 
+      sum + dayBlocksList.reduce((daySum, block) => daySum + block.duration, 0), 0
     )
   }
 
@@ -311,10 +286,10 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
           const y = e.clientY - rect.top
           
           // Find the block in its current location
-          const currentDateKey = Object.keys(dayBlocks).find(key => 
-            (dayBlocks[key] || []).some(b => b.id === movingBlock.blockId)
+          const currentDateKey = Object.keys(blocks).find(key => 
+            (blocks[key] || []).some(b => b.id === movingBlock.blockId)
           )
-          const block = currentDateKey ? (dayBlocks[currentDateKey] || []).find(b => b.id === movingBlock.blockId) : null
+          const block = currentDateKey ? (blocks[currentDateKey] || []).find(b => b.id === movingBlock.blockId) : null
           
           if (block && currentDateKey) {
             const newStartHour = Math.max(0, Math.min(24 - block.duration, 
@@ -333,23 +308,19 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
                   ...block, 
                   startTime: hoursToTime(newStartHour),
                   endTime: hoursToTime(newStartHour + block.duration)
-                }
-                setDayBlocks(prev => {
-                  // Ensure we don't have duplicates
-                  const newDayBlocks = { ...prev };
-                  newDayBlocks[currentDateKey] = (prev[currentDateKey] || []).filter(b => b.id !== movingBlock.blockId);
-                  newDayBlocks[newDateKey] = [...(prev[newDateKey] || []).filter(b => b.id !== movingBlock.blockId), blockToMove];
-                  // Call onUpdate with the new state
-                  onUpdate?.(newDayBlocks);
-                  return newDayBlocks;
-                })
-                setMovingBlock({ ...movingBlock, dateKey: newDateKey })
+                };
+                // isUserInteractionRef.current = true; // Removed
+                const newBlocksData = { ...blocks }; // Use props.blocks
+                newBlocksData[currentDateKey] = (blocks[currentDateKey] || []).filter(b => b.id !== movingBlock.blockId);
+                newBlocksData[newDateKey] = [...(blocks[newDateKey] || []).filter(b => b.id !== movingBlock.blockId), blockToMove];
+                onBlocksChange(newBlocksData);
+                setMovingBlock({ ...movingBlock, dateKey: newDateKey });
               }
             }
           }
         }
       } else if (dragMode === 'resizing' && resizingBlock) {
-        const block = dayBlocks[resizingBlock.dateKey]?.find(b => b.id === resizingBlock.blockId)
+        const block = blocks[resizingBlock.dateKey]?.find(b => b.id === resizingBlock.blockId)
         if (!block) return
         
         const element = document.querySelector(`[data-day="${resizingBlock.dateKey}"]`)
@@ -423,7 +394,7 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
         document.removeEventListener('mouseup', handleMouseUp)
       }
     }
-  }, [dragMode, movingBlock, resizingBlock, dragStart, dragEnd, dayBlocks, hasOverlap, updateBlock])
+  }, [dragMode, movingBlock, resizingBlock, dragStart, dragEnd, blocks, hasOverlap, updateBlock])
 
   return (
     <div className="space-y-4" onClick={(e) => {
@@ -531,7 +502,7 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
               {weekDays.map(({ dateKey }) => (
                 <div key={dateKey} data-day={dateKey} className="relative bg-gray-50/30 rounded-lg cursor-crosshair">
                   {/* Blocks */}
-                  {(dayBlocks[dateKey] || []).map(block => {
+                  {(blocks[dateKey] || []).map(block => {
                     const activity = getActivity(block.activityId)
                     const isSelected = selectedBlock === block.id
                     const isUnassigned = !block.activityId
@@ -702,8 +673,8 @@ export function WeekCalendar({ weekStart, isReadOnly = false, initialBlocks, onU
           activities={activities}
           onActivityChange={(value) => {
             // Find the dateKey for the currently selected block to pass to updateBlock
-            const currentSelectedDateKey = Object.keys(dayBlocks).find(key =>
-              (dayBlocks[key] || []).some(b => b.id === selectedBlock)
+            const currentSelectedDateKey = Object.keys(blocks).find(key =>
+              (blocks[key] || []).some(b => b.id === selectedBlock)
             );
             if (currentSelectedDateKey && selectedBlock) {
               updateBlock(currentSelectedDateKey, selectedBlock, { activityId: value })
